@@ -2,6 +2,7 @@
 1. 注册 openai 账号，并获取到 apiKey
 2. 将 `index.js` 文件中，`##your api key##` 替换成你的 apiKey
 3. push 代码到 master 分支，云托管自动部署后即可运行
+4. 完成之后，记得在微信云托管在后台的「设置-全局设置」中，添加「消息推送」，并增加 path 为 `/message/post` 的配置。
 
 # 下面为微信云托管的标准README
 
