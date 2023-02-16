@@ -1,0 +1,33 @@
+{
+ 	// 本配置文件仅配合模板部署使用，为模板部署的服务生成「服务设置」的初始值。
+	// 模板部署结束后，后续服务发布与本配置文件完全无关，修改「服务设置」请到控制台操作。
+	// 复制模板代码自行开发请忽略本配置文件。
+  
+  "containerPort": 80,
+  "dockerfilePath": "Dockerfile",
+  "buildDir": "",
+  "minNum": 0,
+  "maxNum": 5,
+  "cpu": 1,
+  "mem": 2,
+  "policyType": "cpu",
+  "policyThreshold": 80,
+  "policyDetails": [
+	{
+		"PolicyType": "cpu",
+		"PolicyThreshold": 80
+	},
+	{
+		"PolicyType": "mem",
+		"PolicyThreshold": 80
+	}
+  ],
+  "envParams": {},
+  "customLogs": "stdout",
+  "initialDelaySeconds": 2,
+  "dataBaseName": "nodejs_demo",
+  "executeSQLs": [
+    "CREATE DATABASE IF NOT EXISTS nodejs_demo;",
+    "USE nodejs_demo;"
+  ]
+}
