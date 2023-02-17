@@ -134,7 +134,7 @@ async function getAIMessage({ Content, FromUserName }) {
     fromUser: FromUserName,
     response: '',
     request: Content,
-    aiType: AI_TYPE_TEXT,
+    aiType,
   });
 
   let response = '';
