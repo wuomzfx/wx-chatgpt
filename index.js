@@ -34,8 +34,7 @@ const AI_THINKING_MESSAGE = '我已经在编了，请稍等几秒后复制原文
 const LIMIT_AI_TEXT_COUNT = 10;
 const LIMIT_AI_IMAGE_COUNT = 5;
 
-const LIMIT_COUNT_RESPONSE =
-  'VG4Da7eC09_44p8iG0ChFWp_KIfIC1sF9K3gJz49yajrc30qWhqPYXMzcakSK-qC';
+const LIMIT_COUNT_RESPONSE = '对不起，因为ChatGPT调用收费，您的免费使用额度已用完~'
 
 const configuration = new Configuration({
   apiKey: '##your api key##',
@@ -225,20 +224,6 @@ router.post('/message/post', async ctx => {
     sleep(2800).then(() => AI_THINKING_MESSAGE),
     getAIMessage({ Content, FromUserName }),
   ]);
-
-  // 如果超额了，发送关注图片
-  if (message === LIMIT_COUNT_RESPONSE) {
-    ctx.body = {
-      ToUserName: FromUserName,
-      FromUserName: ToUserName,
-      CreateTime: +new Date(),
-      MsgType: 'image',
-      Image: {
-        MediaId: message,
-      },
-    };
-    return;
-  }
 
   ctx.body = {
     ToUserName: FromUserName,
