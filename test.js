@@ -37,7 +37,7 @@ const LIMIT_AI_IMAGE_COUNT = 5;
 const LIMIT_COUNT_RESPONSE = '对不起，因为ChatGPT调用收费，您的免费使用额度已用完~'
 
 const configuration = new Configuration({
-  apiKey: process.env.OPENAI_API_KEY, // 从环境变量中读取 OpenAI API Key
+  apiKey: '##your api key##',
 });
 
 const openai = new OpenAIApi(configuration);
@@ -85,19 +85,37 @@ async function getAIIMAGE(prompt) {
   return imageURL;
 }
 
-// 添加 token 鉴权中间件
-const authenticateToken = (token) => {
-  return async (ctx, next) => {
-    const authHeader = ctx.request.headers.authorization;
-    const providedToken = authHeader && authHeader.split(' ')[1];
-    if (!providedToken || providedToken !== token) {
-      ctx.status = 401;
-      ctx.body = { message: 'Unauthorized' };
-      return;
-    }
+async function verifyWeChatToken(ctx, next) {
+  const { signature, timestamp, nonce } = ctx.query;
+  const token = '##your wechat token##';
+  const list = [token, timestamp, nonce].sort();
+  const sha1 = require('crypto').createHash('sha1');
+  sha1.update(list.join(''));
+  const sha1Str = sha1.digest('hex');
+
+  if (sha1Str !== signature) {
+    ctx.status = 401;
+    ctx.body = 'Invalid signature';
+  } else {
     await next();
-    };
-    };
+  }
+}
+
+async function parseWeChatXml(xmlStr) {
+    const xml2js = require('xml2js');
+    const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: true });
+    const parseString = require('util').promisify(parser.parseString);
+    const result = await parseString(xmlStr);
+    return result.xml;
+    }
+    
+    async function buildWeChatResponse({ ToUserName, FromUserName, CreateTime, MsgType, Content }) {
+    const xml2js = require('xml2js');
+    const builder = new xml2js.Builder({ rootName: 'xml', cdata: true, headless: true });
+    const xmlObject = { ToUserName, FromUserName, CreateTime, MsgType, Content };
+    const xmlStr = builder.buildObject(xmlObject);
+    return xmlStr;
+    }
     
     async function getAIMessage({ Content, FromUserName }) {
     // 找一下，是否已有记录
@@ -153,7 +171,7 @@ const authenticateToken = (token) => {
     
     if (aiType === AI_TYPE_TEXT) {
     // 构建带上下文的 prompt
-    const prompt = await buildCtxPrompt({ Content, FromUserName });
+    const prompt = await buildCtxPrompt({ FromUserName });
     
     // 请求远程消息
     response = await getAIResponse(prompt);
@@ -184,127 +202,125 @@ const authenticateToken = (token) => {
     }
     
     // 消息推送
-    router.post('/message/post', authenticateToken(process.env.AUTH_TOKEN), async ctx => {
-    const { ToUserName, FromUserName, Content, CreateTime } = ctx.request.body;
+    router.post('/message/post', verifyWeChatToken, async ctx => {
+    const { xml } = ctx.request.body;
     
-    if (!FromUserName) {
-    ctx.body = {
-    ToUserName: FromUserName,
-    FromUserName: ToUserName,
-    CreateTime: CreateTime,
-    MsgType: 'text',
-    Content: '无用户信息',
-    };
-    return;
-    }
-    
-    if ((Content || '').trim() === '获取id') {
-    ctx.body = {
-    ToUserName: FromUserName,
-    FromUserName: ToUserName,
-    CreateTime: CreateTime,
-    MsgType: 'text',
-    Content: FromUserName,
-    };
-    return;
-    }
-    
-    if ((Content || '').startsWith(CLEAR_KEY)) {
-    const clearType = Content.startsWith(CLEAR_KEY_IMAGE)
-    ? AI_TYPE_IMAGE
-    : AI_TYPE_TEXT;
-    const FromUserName = Content.substring(CLEAR_KEY_TEXT.length);
-    const count = await
-    
-    Message.destroy({
-      where: {
+    if (!xml || !xml.Content || !xml.FromUserName || !xml.ToUserName) {
+        ctx.body = '请求格式不正确';
+        return;
+        }
+        
+        const { Content, FromUserName, ToUserName, CreateTime } = xml;
+        
+        if ((Content || '').trim() === '获取id') {
+        const reply = await buildWeChatResponse({
+        ToUserName: FromUserName,
+        FromUserName: ToUserName,
+        CreateTime: +new Date(),
+        MsgType: 'text',
+        Content: FromUserName,
+        });
+        ctx.body = reply;
+        return;
+        }
+        
+        if ((Content || '').startsWith(CLEAR_KEY)) {
+        const clearType = Content.startsWith(CLEAR_KEY_IMAGE)
+        ? AI_TYPE_IMAGE
+        : AI_TYPE_TEXT;
+        const FromUserName = Content.substring(CLEAR_KEY_TEXT.length);
+        const count = await Message.destroy({
+        where: {
         fromUser: FromUserName,
         aiType: {
-          [Op.or]: [clearType, null],
+        [Op.or]: [clearType, null],
         },
-      },
-    });
-    
-    ctx.body = {
-      ToUserName: FromUserName,
-      FromUserName: ToUserName,
-      CreateTime: CreateTime,
-      MsgType: 'text',
-      Content: `已重置用户共 ${count} 条消息`,
-    };
-    return;
-    }
-    
-    const message = await Promise.race([
-    // 3秒微信服务器就会超时，超过2.8秒要提示用户重试
-    sleep(2800).then(() => AI_THINKING_MESSAGE),
-    getAIMessage({ Content, FromUserName }),
-    ]);
-    
-    ctx.body = {
-    ToUserName: FromUserName,
-    FromUserName: ToUserName,
-    CreateTime: +new Date(),
-    MsgType: 'text',
-    Content: message,
-    };
-    });
-    
-    // 首页
-    router.get('/', async ctx => {
-    ctx.body = homePage;
-    });
-    
-    // 更新计数
-    router.post('/api/count', async ctx => {
-    const { request } = ctx;
-    const { action } = request.body;
-    if (action === 'inc') {
-    await Counter.create();
-    } else if (action === 'clear') {
-    await Counter.destroy({
-    truncate: true,
-    });
-    }
-    
-    ctx.body = {
-    code: 0,
-    data: (await Counter.count()) + 10,
-    };
-    });
-    
-    // 获取计数
-    router.get('/api/count', async ctx => {
-    const result = await Counter.count();
-    
-    ctx.body = {
-    code: 0,
-    data: result,
-    };
-    });
-    
-    // 小程序调用，获取微信 Open ID
-    router.get('/api/wx_openid', async ctx => {
-    if (ctx.request.headers['x-wx-source']) {
-    ctx.body = ctx.request.headers['x-wx-openid'];
-    }
-    });
-    
-    const app = new Koa();
-    app
-    .use(logger())
-    .use(bodyParser())
-    .use(router.routes())
-    .use(router.allowedMethods());
-    
-    const port = process.env.PORT || 80;
-    
-    async function bootstrap() {
-    await initDB();
-    
-    app.listen(port, () => {
-    console.log('启动成功', port);
-    });
-    }
-    
-    bootstrap();
+        },
+        });
+        
+        const reply = await buildWeChatResponse({
+          ToUserName: FromUserName,
+          FromUserName: ToUserName,
+          CreateTime: +new Date(),
+          MsgType: 'text',
+          Content: `已重置用户共 ${count} 条消息`,
+        });
+        
+        ctx.body = reply;
+        return;
+        }
+        
+        const message = await Promise.race([
+        // 3秒微信服务器就会超时，超过2.8秒要提示用户重试
+        sleep(2800).then(() => AI_THINKING_MESSAGE),
+        getAIMessage({ Content, FromUserName }),
+        ]);
+        
+        const reply = await buildWeChatResponse({
+        ToUserName: FromUserName,
+        FromUserName: ToUserName,
+        CreateTime: +new Date(),
+        MsgType: 'text',
+        Content: message,
+        });
+        
+        ctx.body = reply;
+        });
+        
+        // 首页
+        router.get('/', async ctx => {
+        ctx.body = homePage;
+        });
+        
+        // 更新计数
+        router.post('/api/count', async ctx => {
+        const { request } = ctx;
+        const { action } = request.body;
+        if (action === 'inc') {
+        await Counter.create();
+        } else if (action === 'clear') {
+        await Counter.destroy({
+        truncate: true,
+        });
+        }
+        
+        ctx.body = {
+        code: 0,
+        data: (await Counter.count()) + 10,
+        };
+        });
+        
+        // 获取计数
+        router.get('/api/count', async ctx => {
+        const result = await Counter.count();
+        
+        ctx.body = {
+        code: 0,
+        data: result,
+        };
+        });
+        
+        // 小程序调用，获取微信 Open ID
+        router.get('/api/wx_openid', async ctx => {
+        if (ctx.request.headers['x-wx-source']) {
+        ctx.body = ctx.request.headers['x-wx-openid'];
+        }
+        });
+        
+        const app = new Koa();
+        app
+        .use(logger())
+        .use(bodyParser())
+        .use(router.routes())
+        .use(router.allowedMethods());
+        
+        const port = process.env.PORT || 80;
+        async function bootstrap() {
+        await initDB();
+        
+        app.listen(port, () => {
+        console.log('启动成功', port);
+        });
+        }
+        
+        bootstrap();    
