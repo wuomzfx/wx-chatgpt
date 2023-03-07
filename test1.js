@@ -58,7 +58,7 @@ async function buildCtxPrompt({ FromUserName }) {
 async function getAIResponse(prompt) {
   const { Configuration, OpenAIApi } = require('openai');
   const configuration = new Configuration({
-    apiKey: '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',
+    apiKey: 'api_keys',
   });
   const openai = new OpenAIApi(configuration);
 
@@ -77,7 +77,7 @@ async function getAIResponse(prompt) {
 async function getAIIMAGE(prompt) {
   const { Configuration, OpenAIApi } = require('openai');
   const configuration = new Configuration({
-    apiKey: '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',
+    apiKey: 'api_keys',
   });
   const openai = new OpenAIApi(configuration);
 
